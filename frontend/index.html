@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CineMatch • Hybrid Recommender</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .title-font { font-family: 'Space Grotesk', sans-serif; }
+        .card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card:hover {
+            transform: translateY(-8px) scale(1.03);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+        .skeleton { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+    <div class="max-w-7xl mx-auto p-8">
+        <header class="flex justify-between items-center mb-12">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-violet-600 rounded-xl flex items-center justify-center text-2xl">🎬</div>
+                <h1 class="text-4xl font-bold title-font tracking-tight">CineMatch</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <input id="searchInput" type="text" placeholder="Search movies..." 
+                       class="bg-zinc-900 border border-zinc-700 rounded-full px-6 py-3 w-80 focus:outline-none focus:border-violet-500 transition-colors">
+                <button onclick="searchMovies()" class="bg-violet-600 hover:bg-violet-700 px-8 py-3 rounded-full font-medium flex items-center gap-2">
+                    <i class="fas fa-search"></i> Search
+                </button>
+            </div>
+        </header>
+
+        <div class="mb-12">
+            <label class="block text-sm text-zinc-400 mb-2">Try User ID (e.g. 1, 42, 500)</label>
+            <div class="flex gap-3">
+                <input id="userIdInput" type="number" value="1" class="bg-zinc-900 border border-zinc-700 rounded-xl px-6 py-3 w-48 focus:outline-none focus:border-violet-500">
+                <button onclick="getRecommendations()" class="bg-emerald-600 hover:bg-emerald-700 px-10 py-3 rounded-xl font-semibold flex items-center gap-2">
+                    <i class="fas fa-sparkles"></i> Recommend for Me
+                </button>
+            </div>
+        </div>
+
+        <div id="searchResults" class="hidden mb-16">
+            <h2 class="text-2xl font-semibold mb-6">Search Results</h2>
+            <div id="searchGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6"></div>
+        </div>
+
+        <div id="recommendSection">
+            <h2 class="text-3xl font-semibold mb-8 flex items-center gap-3">
+                <span>Recommended for You</span>
+                <span id="userBadge" class="text-sm bg-zinc-800 px-4 py-1 rounded-full"></span>
+            </h2>
+            <div id="recGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:8000';
+
+        async function getRecommendations() {
+            const userId = document.getElementById('userIdInput').value || 1;
+            document.getElementById('userBadge').textContent = `User ${userId}`;
+            showSkeletons('recGrid');
+
+            try {
+                const res = await fetch(`${API_URL}/recommend/${userId}`);
+                const data = await res.json();
+                renderMovies(data.recommendations, 'recGrid', true);
+            } catch (e) {
+                console.error(e);
+                alert('Backend not running. Start FastAPI first.');
+            }
+        }
+
+        async function searchMovies() {
+            const q = document.getElementById('searchInput').value.trim();
+            if (!q) return;
+
+            document.getElementById('searchResults').classList.remove('hidden');
+            showSkeletons('searchGrid');
+
+            try {
+                const res = await fetch(`${API_URL}/movies/search?q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                renderMovies(data, 'searchGrid', false);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function showSkeletons(containerId) {
+            const grid = document.getElementById(containerId);
+            grid.innerHTML = '';
+            for (let i = 0; i < 10; i++) {
+                grid.innerHTML += `
+                    <div class="card bg-zinc-900 rounded-2xl overflow-hidden">
+                        <div class="h-64 bg-zinc-800 skeleton"></div>
+                        <div class="p-4">
+                            <div class="h-5 bg-zinc-700 rounded skeleton mb-2"></div>
+                            <div class="h-4 bg-zinc-700 rounded skeleton w-3/4"></div>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        function renderMovies(movies, containerId, showPredicted) {
+            const grid = document.getElementById(containerId);
+            grid.innerHTML = '';
+
+            movies.forEach(movie => {
+                const genres = movie.genres ? movie.genres.split('|').slice(0,3).join(', ') : '';
+                const card = document.createElement('div');
+                card.className = 'card bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800 hover:border-violet-500 group';
+                card.innerHTML = `
+                    <div class="h-64 bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center text-6xl relative">
+                        🎥
+                        <div class="absolute bottom-3 right-3 bg-black/70 text-xs px-3 py-1 rounded-full">${movie.movieId || ''}</div>
+                    </div>
+                    <div class="p-5">
+                        <h3 class="font-semibold text-lg leading-tight mb-2 line-clamp-2">${movie.title}</h3>
+                        <p class="text-zinc-400 text-sm mb-3">${genres}</p>
+                        ${showPredicted && movie.predicted_rating ? `
+                            <div class="flex items-center gap-2 text-emerald-400 text-sm">
+                                <i class="fas fa-star"></i>
+                                <span>Predicted: ${movie.predicted_rating}</span>
+                            </div>` : ''}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        // Initial load
+        window.onload = () => {
+            getRecommendations();
+        };
+    </script>
+</body>
+</html>
